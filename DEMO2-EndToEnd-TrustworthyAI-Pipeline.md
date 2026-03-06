@@ -27,6 +27,8 @@ cd demo2-pipeline
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 export AZURE_OPENAI_API_KEY="your-key"
 export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
+export AZURE_CONTENT_SAFETY_ENDPOINT="https://your-content-safety.cognitiveservices.azure.com/"
+export AZURE_CONTENT_SAFETY_KEY="your-key"
 mvn spring-boot:run
 ```
 
@@ -73,6 +75,13 @@ curl -s http://localhost:8080/actuator/metrics/ai.tokens.total | jq .
         <artifactId>spring-ai-azure-openai-spring-boot-starter</artifactId>
     </dependency>
 
+    <!-- Azure AI Content Safety SDK -->
+    <dependency>
+        <groupId>com.azure</groupId>
+        <artifactId>azure-ai-contentsafety</artifactId>
+        <version>1.0.6</version>
+    </dependency>
+
     <!-- Observability -->
     <dependency>
         <groupId>io.micrometer</groupId>
@@ -98,6 +107,8 @@ curl -s http://localhost:8080/actuator/metrics/ai.tokens.total | jq .
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 export AZURE_OPENAI_API_KEY="your-key"
 export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
+export AZURE_CONTENT_SAFETY_ENDPOINT="https://your-content-safety.cognitiveservices.azure.com/"
+export AZURE_CONTENT_SAFETY_KEY="your-key"
 export APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=..."  # Optional
 ```
 
@@ -109,6 +120,10 @@ export APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=..."  # Optiona
 # Azure OpenAI
 spring.ai.azure.openai.endpoint=${AZURE_OPENAI_ENDPOINT}
 spring.ai.azure.openai.api-key=${AZURE_OPENAI_API_KEY}
+
+# Azure AI Content Safety
+azure.content-safety.endpoint=${AZURE_CONTENT_SAFETY_ENDPOINT}
+azure.content-safety.key=${AZURE_CONTENT_SAFETY_KEY}
 
 # Observability
 management.endpoints.web.exposure.include=health,metrics,prometheus
@@ -201,45 +216,37 @@ public class InputSanitizer {
 ```java
 // src/main/java/com/demo/pipeline/ContentSafetyFilter.java
 
-import org.springframework.ai.moderation.*;
+import com.azure.ai.contentsafety.ContentSafetyClient;
+import com.azure.ai.contentsafety.models.AnalyzeTextOptions;
+import com.azure.ai.contentsafety.models.TextCategoriesAnalysis;
 
 @Component
 public class ContentSafetyFilter {
 
-    private final ModerationModel moderationModel;
+    private static final int SEVERITY_THRESHOLD = 2; // Block severity 2+ (0=safe, 2=low, 4=medium, 6=high)
 
-    // Block thresholds — configurable per deployment
-    private static final double VIOLENCE_THRESHOLD = 0.3;
-    private static final double HATE_THRESHOLD = 0.3;
-    private static final double SEXUAL_THRESHOLD = 0.3;
-    private static final double SELF_HARM_THRESHOLD = 0.3;
+    private final ContentSafetyClient contentSafetyClient;
 
-    public ContentSafetyFilter(ModerationModel moderationModel) {
-        this.moderationModel = moderationModel;
+    public ContentSafetyFilter(ContentSafetyClient contentSafetyClient) {
+        this.contentSafetyClient = contentSafetyClient;
     }
 
     /**
-     * Check both input and output for content safety violations.
+     * Check both input and output for content safety violations
+     * using the Azure AI Content Safety SDK.
      */
     public SafetyResult check(String text, Direction direction) {
-        ModerationResponse response = moderationModel.call(
-            new ModerationPrompt(text));
-
-        var result = response.getResult();
-        var categories = result.getCategories();
+        var result = contentSafetyClient.analyzeText(new AnalyzeTextOptions(text));
 
         boolean blocked = false;
         var violations = new ArrayList<String>();
 
-        if (categories.getViolence() > VIOLENCE_THRESHOLD) {
-            violations.add("violence: " + categories.getViolence());
-            blocked = true;
+        for (TextCategoriesAnalysis cat : result.getCategoriesAnalysis()) {
+            if (cat.getSeverity() >= SEVERITY_THRESHOLD) {
+                violations.add(cat.getCategory() + ": severity " + cat.getSeverity());
+                blocked = true;
+            }
         }
-        if (categories.getHate() > HATE_THRESHOLD) {
-            violations.add("hate: " + categories.getHate());
-            blocked = true;
-        }
-        // ... similar for sexual, self-harm
 
         if (blocked) {
             log.warn("[CONTENT_SAFETY] {} blocked — violations: {}",
@@ -259,7 +266,7 @@ public class ContentSafetyFilter {
 }
 ```
 
-> **Say:** "This runs on both input AND output. Even if a prompt injection gets past the system prompt, the content safety filter catches harmful output before it reaches the user."
+> **Say:** "This uses the Azure AI Content Safety SDK directly — it checks four categories (violence, hate, sexual, self-harm) on a 0-6 severity scale. We block at severity 2 or above. This runs on both input AND output, so even if a prompt injection gets past the system prompt, harmful output is caught before it reaches the user."
 
 ### Step 3: Show the Audit Logger
 
@@ -368,13 +375,26 @@ public class TrustworthyPipeline {
         }
 
         // STAGE 3: PROMPT & CALL MODEL
-        var response = chatClient.prompt()
-            .user(sanitized.sanitizedText())
-            .call()
-            .chatResponse();
+        String output;
+        int tokens;
+        try {
+            var response = chatClient.prompt()
+                .user(sanitized.sanitizedText())
+                .call()
+                .chatResponse();
 
-        String output = response.getResult().getOutput().getContent();
-        int tokens = response.getMetadata().getUsage().getTotalTokens();
+            output = response.getResult().getOutput().getText();
+            tokens = (int) response.getMetadata().getUsage().getTotalTokens();
+        } catch (HttpResponseException e) {
+            // Azure OpenAI's built-in content filter detected a policy violation
+            log.warn("[PIPELINE] Azure OpenAI content filter blocked request for user {}: {}",
+                userId, e.getMessage());
+            auditLogger.logRequest(new AuditEntry(
+                userId, true, sanitized.hadPii(), 0,
+                elapsed(stopwatch), 0.0, "model_content_filter"));
+            return PipelineResponse.blocked(
+                "Request blocked by Azure OpenAI content filter (jailbreak/policy violation detected).");
+        }
 
         // STAGE 4: VALIDATE OUTPUT — Schema check
         // (for structured outputs, parse into record and validate fields)
@@ -418,7 +438,7 @@ public class TrustworthyPipeline {
 }
 ```
 
-> **Say:** "This is the orchestrator — six stages, all pluggable. Sanitize, filter input, call the model, validate, filter output, log and respond. Every stage can block the request."
+> **Say:** "This is the orchestrator — six stages, all pluggable. Sanitize, filter input, call the model, validate, filter output, log and respond. Every stage can block the request. Notice Stage 3 catches `HttpResponseException` — that's Azure OpenAI's built-in jailbreak and content filter. So we have three layers of defense: our Content Safety check on input, Azure OpenAI's built-in filter, and our Content Safety check on output."
 
 ---
 
@@ -513,9 +533,11 @@ curl -s http://localhost:8080/api/chat \
   "message": null,
   "tokensUsed": 0,
   "piiRedacted": false,
-  "blockedReason": "Your request was blocked by content safety filters."
+  "blockedReason": "Request blocked by Azure OpenAI content filter (jailbreak/policy violation detected)."
 }
 ```
+
+> **Say:** "Zero tokens used — the request was caught by Azure OpenAI's built-in jailbreak detection. This is defense in depth: even if our Content Safety filter passes the input (it's not explicitly violent or hateful), Azure OpenAI's own filter catches the jailbreak attempt. Three layers of defense, all gracefully handled."
 
 Then show the audit log:
 
@@ -526,8 +548,6 @@ grep "attacker-1" logs/application.log
 ```
 [AUDIT] user=attacker-1 blocked=true pii=false tokens=0 latency=45ms safety=0.0
 ```
-
-> **Say:** "Zero tokens used — we blocked it before calling the model. That's cost savings AND security in one check."
 
 ### Step 5: Show Token Usage Per User
 
@@ -595,7 +615,7 @@ customEvents
 
 > "What you just saw:"
 > 1. **PII never reaches the model** — stripped at the edge
-> 2. **Content safety on input AND output** — double barrier
+> 2. **Three layers of content defense** — Azure AI Content Safety on input, Azure OpenAI built-in jailbreak/policy filter on the model call, Content Safety again on output
 > 3. **Zero tokens burned on blocked requests** — cost savings
 > 4. **Full audit trail** — every interaction logged with structured data
 > 5. **Standard Java tooling** — Micrometer, Spring Actuator, OpenTelemetry
@@ -626,7 +646,7 @@ customEvents
 | Issue | Fix |
 |-------|-----|
 | PII regex too aggressive | Tune patterns; consider using Azure AI Language PII detection API for production accuracy |
-| Content safety latency | Moderation API adds ~50ms — acceptable for most use cases; use async for high-throughput |
+| Content safety latency | Azure Content Safety API adds ~50ms — acceptable for most use cases; use async for high-throughput |
 | Metrics not appearing | Ensure `management.endpoints.web.exposure.include` is set in application.properties |
 | Application Insights not connecting | Check `APPLICATIONINSIGHTS_CONNECTION_STRING` env var and Java agent attach |
 | Token count inaccurate | Some models report usage differently — check `response.getMetadata().getUsage()` |

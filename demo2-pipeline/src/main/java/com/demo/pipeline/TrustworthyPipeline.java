@@ -1,5 +1,6 @@
 package com.demo.pipeline;
 
+import com.azure.core.exception.HttpResponseException;
 import com.demo.pipeline.AuditLogger.AuditEntry;
 import com.demo.pipeline.ContentSafetyFilter.Direction;
 
@@ -63,13 +64,26 @@ public class TrustworthyPipeline {
         }
 
         // STAGE 3: PROMPT & CALL MODEL
-        var response = chatClient.prompt()
-            .user(sanitized.sanitizedText())
-            .call()
-            .chatResponse();
+        String output;
+        int tokens;
+        try {
+            var response = chatClient.prompt()
+                .user(sanitized.sanitizedText())
+                .call()
+                .chatResponse();
 
-        String output = response.getResult().getOutput().getContent();
-        int tokens = (int) response.getMetadata().getUsage().getTotalTokens();
+            output = response.getResult().getOutput().getText();
+            tokens = (int) response.getMetadata().getUsage().getTotalTokens();
+        } catch (HttpResponseException e) {
+            // Azure OpenAI's built-in content filter detected a policy violation
+            log.warn("[PIPELINE] Azure OpenAI content filter blocked request for user {}: {}",
+                userId, e.getMessage());
+            auditLogger.logRequest(new AuditEntry(
+                userId, true, sanitized.hadPii(), 0,
+                elapsed(stopwatch), 0.0, "model_content_filter"));
+            return PipelineResponse.blocked(
+                "Request blocked by Azure OpenAI content filter (jailbreak/policy violation detected).");
+        }
 
         // STAGE 4: VALIDATE OUTPUT — Schema check
         // (for structured outputs, parse into record and validate fields)

@@ -110,7 +110,7 @@ Point out the diagram showing the filter pipeline:
 User Input → Input Filter → Model → Output Filter → Response
 ```
 
-> **Say:** "This is built into Azure OpenAI itself — you don't need any code for this level of protection. But for production, you want additional layers in your Java application. Defense in depth."
+> **Say:** "This is built into Azure OpenAI itself — you don't need any code for this level of protection. But for production, you want additional layers in your Java application. Defense in depth — three layers: your Content Safety filter on input, Azure OpenAI's built-in jailbreak detection on the model call, and your Content Safety filter on output. In our pipeline, Stage 3 catches Azure OpenAI's `HttpResponseException` and returns a graceful blocked response instead of a 500 error."
 
 ### Step 3: Azure Portal — Content Filter Configuration
 
@@ -253,7 +253,7 @@ If you don't have live data, show the query structure and explain what the outpu
 > | **Sanitize** (PII) | Azure AI Language PII Detection, or regex in your Java code |
 > | **Prompt** (Assemble) | `@SystemMessage` (LangChain4j), `.defaultSystem()` (Spring AI) |
 > | **Validate** (Schema) | Structured output with Java records, `QuestionAnswerAdvisor` for RAG grounding |
-> | **Filter** (Safety) | Azure AI Content Safety, Azure OpenAI built-in filters, `@Moderate` / `SafeGuardAdvisor` |
+> | **Filter** (Safety) | Three layers: Azure AI Content Safety SDK (input & output), Azure OpenAI built-in jailbreak/policy filter (model call), `SafeGuardAdvisor` |
 > | **Log** (Audit) | `SimpleLoggerAdvisor`, Micrometer, OpenTelemetry → Application Insights |
 > | **Respond** (to User) | Safe, validated, logged response |
 >

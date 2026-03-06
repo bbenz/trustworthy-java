@@ -41,6 +41,13 @@
             <version>${spring-ai.version}</version>
         </dependency>
 
+        <!-- Azure AI Content Safety SDK -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-ai-contentsafety</artifactId>
+            <version>1.0.6</version>
+        </dependency>
+
         <!-- Micrometer OTLP Registry -->
         <dependency>
             <groupId>io.micrometer</groupId>

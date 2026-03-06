@@ -27,7 +27,7 @@ export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
 # Application Insights (optional, for Demo 2 observability)
 export APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=..."
 
-# Azure AI Content Safety (for Demo 3 evaluations)
+# Azure AI Content Safety (for Demo 2 pipeline & Demo 3 evaluations)
 export AZURE_CONTENT_SAFETY_ENDPOINT="https://your-content-safety.cognitiveservices.azure.com/"
 export AZURE_CONTENT_SAFETY_KEY="your-key"
 ```

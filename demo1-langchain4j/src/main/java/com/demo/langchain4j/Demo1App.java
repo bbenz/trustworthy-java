@@ -46,5 +46,7 @@ public class Demo1App {
         } catch (ModerationException e) {
             System.out.println("BLOCKED by content moderation: " + e.getMessage());
         }
+
+        System.exit(0); // Clean shutdown of Reactor HTTP threads
     }
 }
