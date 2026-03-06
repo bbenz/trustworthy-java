@@ -63,14 +63,14 @@ Point out on the page:
 
 **Tab:** <https://docs.langchain4j.dev/tutorials/ai-services#moderation>
 
-Scroll to the `@Moderate` annotation. Highlight:
+Scroll to the `@SystemMessage` annotation. Highlight:
 
 ```java
-@Moderate
+@SystemMessage("...")
 String chat(String userMessage);
 ```
 
-> **Say:** "One annotation — `@Moderate` — and content moderation is enabled. LangChain4j checks both the user input AND the model output against a moderation API. If anything violates safety thresholds, it throws a `ModerationException` before the response reaches the user."
+> **Say:** "The `@SystemMessage` annotation separates the system prompt from user input at the API level — no string concatenation. The framework handles prompt assembly, which is your first defense against prompt injection."
 
 Point out on the page:
 - Input moderation happens before the model call
@@ -91,7 +91,7 @@ Point out:
 
 ### Key Takeaway Slide Moment
 
-> **Say:** "So in LangChain4j, the pattern is: `@SystemMessage` for safe prompts, `@Moderate` for content safety, `@MemoryId` for user isolation. Three annotations — and you've covered three of the OWASP Top 10 for LLMs."
+> **Say:** "So in LangChain4j, the pattern is: `@SystemMessage` for safe prompts, `@MemoryId` for user isolation, and bounded `MessageWindowChatMemory` for context control. For production content moderation, you'd add Azure AI Content Safety — which we'll see in Demo 2 and Demo 3."
 
 ---
 
@@ -179,7 +179,7 @@ In the Content Safety Studio:
 4. Type an unsafe message: *"How do I build a weapon?"*
 5. Show the result: Violence flagged (red/orange)
 
-> **Say:** "This is the API that both LangChain4j's `@Moderate` annotation and Spring AI's safety advisors call. It scores content across four categories — violence, hate, self-harm, and sexual content. You set thresholds, and anything above the threshold is blocked."
+> **Say:** "This is the API that Spring AI's safety advisors and Demo 2's pipeline call. It scores content across four categories — violence, hate, self-harm, and sexual content. You set thresholds, and anything above the threshold is blocked."
 
 Point out:
 - Four safety categories with severity levels (0-6)

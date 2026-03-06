@@ -43,7 +43,7 @@ trustworthy-java/
 ├── demo1-langchain4j/               # Demo 1 Part A — LangChain4j
 │   ├── pom.xml
 │   └── src/main/java/com/demo/langchain4j/
-│       ├── SafeProductAssistant.java    # @SystemMessage + @Moderate
+│       ├── SafeProductAssistant.java    # @SystemMessage + @MemoryId
 │       ├── DemoConfig.java              # GitHub Models + moderation wiring
 │       └── Demo1App.java               # 3 scenarios: normal, injection, harmful
 │
@@ -91,7 +91,7 @@ trustworthy-java/
 
 | Part | Framework | Key Concepts |
 |------|-----------|-------------|
-| Part A | LangChain4j | `@SystemMessage`, `@Moderate`, `@MemoryId`, GitHub Models |
+| Part A | LangChain4j | `@SystemMessage`, `@MemoryId`, `MessageWindowChatMemory`, GitHub Models |
 | Part B | Spring AI | `SafeGuardAdvisor`, `QuestionAnswerAdvisor`, `.entity()` typed output |
 
 **Run Part A (LangChain4j console app):**

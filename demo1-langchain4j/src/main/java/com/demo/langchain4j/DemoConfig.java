@@ -1,10 +1,8 @@
 package com.demo.langchain4j;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import dev.langchain4j.model.azure.AzureOpenAiModerationModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.github.GitHubModelsChatModel;
-import dev.langchain4j.model.moderation.ModerationModel;
 import dev.langchain4j.service.AiServices;
 
 /**
@@ -28,16 +26,11 @@ public class DemoConfig {
             .temperature(0.3)      // Lower = more deterministic/safe
             .build();
 
-        ModerationModel moderationModel = AzureOpenAiModerationModel.builder()
-            .endpoint(System.getenv("AZURE_OPENAI_ENDPOINT"))
-            .apiKey(System.getenv("AZURE_OPENAI_API_KEY"))
-            .build();
-
         return AiServices.builder(SafeProductAssistant.class)
             .chatLanguageModel(chatModel)
-            .moderationModel(moderationModel)
-            .chatMemory(MessageWindowChatMemory.builder()
-                .maxMessages(10)   // Limit context window
+            .chatMemoryProvider(memoryId -> MessageWindowChatMemory.builder()
+                .id(memoryId)
+                .maxMessages(10)   // Limit context window per user
                 .build())
             .build();
     }

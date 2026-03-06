@@ -1,10 +1,8 @@
 package com.demo.langchain4j;
 
-import dev.langchain4j.service.AiService;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
-import dev.langchain4j.service.moderate.Moderate;
 
 /**
  * A safe AI service interface for product search assistance.
@@ -15,7 +13,6 @@ import dev.langchain4j.service.moderate.Moderate;
  * - @MemoryId: per-user conversation memory isolation
  * - @UserMessage: user input is a separate, typed parameter (not string-concatenated)
  */
-@AiService(wiringMode = AiService.WiringMode.EXPLICIT)
 public interface SafeProductAssistant {
 
     @SystemMessage("""
@@ -29,7 +26,6 @@ public interface SafeProductAssistant {
         - If asked about topics outside home improvement, politely decline.
         - Never make up product names or prices — only use provided context.
         """)
-    @Moderate  // Automatically runs content moderation on input AND output
     String searchProducts(
         @MemoryId int userId,
         @UserMessage String question

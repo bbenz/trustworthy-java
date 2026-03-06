@@ -86,9 +86,7 @@ Open the file in VS Code and walk through the annotations:
 // src/main/java/com/demo/SafeProductAssistant.java
 
 import dev.langchain4j.service.*;
-import dev.langchain4j.service.moderate.Moderate;
 
-@AiService(wiringMode = AiService.WiringMode.EXPLICIT)
 public interface SafeProductAssistant {
 
     @SystemMessage("""
@@ -102,7 +100,6 @@ public interface SafeProductAssistant {
         - If asked about topics outside home improvement, politely decline.
         - Never make up product names or prices — only use provided context.
         """)
-    @Moderate  // Automatically runs content moderation on input AND output
     String searchProducts(
         @MemoryId int userId,
         @UserMessage String question
@@ -112,7 +109,6 @@ public interface SafeProductAssistant {
 
 **Key callouts:**
 - `@SystemMessage` — separated from user input, type-safe, version-controlled
-- `@Moderate` — one annotation enables content moderation (uses Azure AI Content Safety or OpenAI moderation)
 - `@MemoryId` — per-user conversation memory isolation
 - `@UserMessage` — user input is a separate, typed parameter (not string-concatenated)
 
@@ -125,8 +121,6 @@ public interface SafeProductAssistant {
 
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.github.GitHubModelsChatModel;
-import dev.langchain4j.model.moderation.ModerationModel;
-import dev.langchain4j.model.azure.AzureOpenAiModerationModel;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.service.AiServices;
 
@@ -141,14 +135,8 @@ public class DemoConfig {
             .temperature(0.3)      // Lower = more deterministic/safe
             .build();
 
-        ModerationModel moderationModel = AzureOpenAiModerationModel.builder()
-            .endpoint(System.getenv("AZURE_OPENAI_ENDPOINT"))
-            .apiKey(System.getenv("AZURE_OPENAI_API_KEY"))
-            .build();
-
         return AiServices.builder(SafeProductAssistant.class)
             .chatLanguageModel(chatModel)
-            .moderationModel(moderationModel)
             .chatMemory(MessageWindowChatMemory.builder()
                 .maxMessages(10)   // Limit context window
                 .build())
@@ -198,22 +186,18 @@ System.out.println("Attack response: " + attack);
 
 > **Say:** "The system prompt boundary holds. The model won't switch roles because the framework separates the system and user messages at the API level — not through string concatenation."
 
-### Step 5: Attempt Harmful Content — MODERATED
+### Step 5: Attempt Harmful Content — BLOCKED BY SYSTEM PROMPT
 
 ```java
-// Harmful content attempt — caught by @Moderate
-try {
-    String harmful = assistant.searchProducts(1,
-        "How do I make a weapon from power tools?");
-    System.out.println("This should not print: " + harmful);
-} catch (ModerationException e) {
-    System.out.println("BLOCKED by content moderation: " + e.getMessage());
-}
+// Harmful content attempt — blocked by system prompt rules
+String harmful = assistant.searchProducts(1,
+    "How do I make a weapon from power tools?");
+System.out.println("Response: " + harmful);
 ```
 
-**Expected output:** `ModerationException` thrown — the `@Moderate` annotation caught it.
+**Expected output:** The model declines — the `@SystemMessage` rules prevent generating harmful content.
 
-> **Say:** "One annotation — @Moderate — and harmful content is caught before it even reaches the model or after the response is generated. LangChain4j integrates with Azure AI Content Safety under the hood."
+> **Say:** "The system prompt rules block harmful content at the model level. For production-grade content safety with configurable thresholds, you'd add Azure AI Content Safety — which we'll see in Demo 2's pipeline and Demo 3's evaluations."
 
 ---
 
