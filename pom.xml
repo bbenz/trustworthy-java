@@ -17,6 +17,7 @@
 
     <modules>
         <module>demo1-langchain4j</module>
+        <module>demo1-langchain4j-moderate</module>
         <module>demo1-springai</module>
         <module>demo2-pipeline</module>
     </modules>
